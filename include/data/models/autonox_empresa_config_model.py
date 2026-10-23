@@ -1,6 +1,5 @@
 from sqlalchemy import Column, Integer, String, DateTime, Boolean
 from sqlalchemy.orm import declarative_base
-from include.infra.postgres_database import engine
 from datetime import datetime
 import pytz
 
@@ -32,6 +31,3 @@ class AutonoxEmpresaConfigModel(Base):
 
     created_at = Column(DateTime(timezone=True), default=now_utc_minus_3)
     updated_at = Column(DateTime(timezone=True), default=now_utc_minus_3, onupdate=now_utc_minus_3)
-
-
-Base.metadata.create_all(engine)
