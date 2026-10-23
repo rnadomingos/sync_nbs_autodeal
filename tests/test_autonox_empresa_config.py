@@ -3,7 +3,8 @@ from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker
 
 from include.data.models.autonox_empresa_config_model import AutonoxEmpresaConfigModel, Base
-from include.data.seeds.empresa_config_seed import seed_empresa_config, INITIAL_EMPRESA_SEEDS
+from include.data.models.autonox_sync_config_model import AutonoxSyncConfigModel
+from include.data.seeds.seed_config import seed_config, INITIAL_EMPRESA_SEEDS
 from include.clients.autonox_client import AutonoxHttpClient
 from include.services.sync_service import SyncService
 
@@ -13,6 +14,13 @@ def memory_db():
     engine = create_engine("sqlite:///:memory:")
     Base.metadata.create_all(engine)
     return engine
+
+
+def test_sync_service_creates_outbox_table(memory_db):
+    SyncService(db_engine=memory_db)
+
+    with memory_db.connect() as connection:
+        connection.execute(text("SELECT * FROM autonox_outbox"))
 
 
 def test_autonox_empresa_config_model_creation(memory_db):
@@ -37,8 +45,9 @@ def test_autonox_empresa_config_model_creation(memory_db):
     assert retrieved.is_active is True
 
 
-def test_seed_empresa_config(memory_db):
-    inserted_count = seed_empresa_config(memory_db)
+def test_seed_config(memory_db, monkeypatch):
+    monkeypatch.setenv("INTEGRATION_START_DATE", "2026-08-01")
+    inserted_count = seed_config(memory_db)
     assert inserted_count >= len(INITIAL_EMPRESA_SEEDS)
 
     Session = sessionmaker(bind=memory_db)
@@ -49,6 +58,109 @@ def test_seed_empresa_config(memory_db):
     assert emp2.sigla == "GPBB"
     assert emp2.is_active is True
     assert emp2.api_key != ""
+    sync_config = session.query(AutonoxSyncConfigModel).one()
+    assert sync_config.enqueue_limit == 500
+    assert sync_config.batch_size == 50
+    assert sync_config.max_attempts == 5
+    assert sync_config.data_inicial_integracao.isoformat() == "2026-08-01"
+
+
+def test_seed_does_not_overwrite_existing_sync_config(memory_db, monkeypatch):
+    monkeypatch.setenv("INTEGRATION_START_DATE", "2026-08-01")
+    seed_config(memory_db)
+    with memory_db.begin() as connection:
+        connection.execute(
+            text(
+                """
+                UPDATE autonox_sync_config
+                SET enqueue_limit = 100, batch_size = 20, max_attempts = 3
+                WHERE config_id = 1
+                """
+            )
+        )
+
+    monkeypatch.setenv("INTEGRATION_START_DATE", "2026-09-01")
+    seed_config(memory_db)
+    service = SyncService(db_engine=memory_db)
+    with sessionmaker(bind=memory_db)() as session:
+        sync_config = session.query(AutonoxSyncConfigModel).one()
+        assert sync_config.enqueue_limit == 100
+        assert sync_config.batch_size == 20
+        assert sync_config.max_attempts == 3
+        assert sync_config.data_inicial_integracao.isoformat() == "2026-08-01"
+    assert service.sync_config == {
+        "enqueue_limit": 100,
+        "batch_size": 20,
+        "max_attempts": 3,
+    }
+
+
+def test_seed_migrates_legacy_start_date_to_sync_config(monkeypatch):
+    engine = create_engine("sqlite:///:memory:")
+    with engine.begin() as connection:
+        connection.execute(
+            text(
+                """
+                CREATE TABLE autonox_empresa_config (
+                    codigo_empresa INTEGER PRIMARY KEY,
+                    sigla VARCHAR(50) NOT NULL,
+                    marca VARCHAR(50) NOT NULL,
+                    api_key VARCHAR(255) NOT NULL,
+                    is_active BOOLEAN NOT NULL,
+                    data_inicial_integracao DATE,
+                    created_at DATETIME,
+                    updated_at DATETIME
+                )
+                """
+            )
+        )
+        connection.execute(
+            text(
+                """
+                INSERT INTO autonox_empresa_config
+                    (codigo_empresa, sigla, marca, api_key, is_active,
+                     data_inicial_integracao)
+                VALUES
+                    (10, 'A', 'BMW', 'key', TRUE, '2026-09-01'),
+                    (11, 'B', 'BMW', 'key', TRUE, '2026-08-01'),
+                    (12, 'C', 'BMW', 'key', FALSE, '2026-01-01')
+                """
+            )
+        )
+    monkeypatch.setenv("INTEGRATION_START_DATE", "2026-10-01")
+
+    seed_config(engine)
+
+    with engine.connect() as connection:
+        configured_date = connection.execute(
+            text(
+                "SELECT data_inicial_integracao FROM autonox_sync_config "
+                "WHERE config_id = 1"
+            )
+        ).scalar_one()
+        legacy_column_exists = connection.execute(
+            text("PRAGMA table_info(autonox_empresa_config)")
+        ).all()
+    assert configured_date == "2026-08-01"
+    assert "data_inicial_integracao" not in {column[1] for column in legacy_column_exists}
+
+
+def test_seed_creates_config_table_for_new_database(monkeypatch):
+    engine = create_engine("sqlite:///:memory:")
+    monkeypatch.setenv("INTEGRATION_START_DATE", "2026-10-01")
+
+    seed_config(engine)
+
+    with engine.connect() as connection:
+        row = connection.execute(
+            text(
+                """
+                SELECT enqueue_limit, batch_size, max_attempts, data_inicial_integracao
+                FROM autonox_sync_config WHERE config_id = 1
+                """
+            )
+        ).one()
+    assert row == (500, 50, 5, "2026-10-01")
 
 
 def test_autonox_client_empresa_api_key():
@@ -63,7 +175,7 @@ def test_autonox_client_empresa_api_key():
 
 
 def test_sync_service_empresa_config_fetching(memory_db):
-    seed_empresa_config(memory_db)
+    seed_config(memory_db)
     service = SyncService(db_engine=memory_db)
 
     configs = service.get_empresa_configs()
