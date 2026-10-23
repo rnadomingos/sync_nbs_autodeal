@@ -1,12 +1,15 @@
 from include.infra.postgres_database import PostgresSessionLocal, inspector
 from sqlalchemy.exc import SQLAlchemyError
-from sqlalchemy import func
+from sqlalchemy import func, text
 from typing import Any
-import os
+import logging
+from datetime import date
+
+logger = logging.getLogger(__name__)
 
 class TableTools:
     
-    def loadMaxDateColumn(self, date_column:Any) -> dict: 
+    def loadMaxDateColumn(self, date_column: Any) -> dict[str, str | None]:
         """
         Get the maximum date from the given model column and format as 'yyyy-MM-dd'.
 
@@ -14,24 +17,32 @@ class TableTools:
             date_column (Any): A SQLAlchemy model column (e.g., OSCapaModel.data_cadastro).
             
         Returns:
-            dict: A dictionary with the max date as 'yyyy-MM-dd', or None if not found.
+            dict: The maximum date, or the globally configured integration start date.
         """
-        START_DATE = os.getenv('INTEGRATION_START_DATE')
-
         with PostgresSessionLocal() as db:
             try:
-                result = db.query(func.max(date_column)).one()
-                max_date = result[0]
-                db.commit()
+                max_date = db.query(func.max(date_column)).scalar()
                 if max_date:
-                     return { 'max_date': max_date.strftime('%Y-%m-%d')}
-                return { 'max_date': START_DATE }
-            except SQLAlchemyError as e:
+                    return {"max_date": max_date.strftime("%Y-%m-%d")}
+
+                initial_date = db.execute(
+                    text(
+                        """
+                        SELECT data_inicial_integracao
+                        FROM autonox_sync_config
+                        WHERE config_id = 1
+                        """
+                    )
+                ).scalar_one_or_none()
+                if initial_date:
+                    return {
+                        "max_date": date.fromisoformat(str(initial_date)[:10]).isoformat()
+                    }
+                return {"max_date": None}
+            except SQLAlchemyError:
                 db.rollback()
-                print("Error load max date:")
-                print(e.__class__.__name__, "-", str(e._message))
+                logger.exception("Error loading maximum integration date")
                 raise
-        return 
 
     def table_inspector(self, table_name: str) -> Any:
         try:
