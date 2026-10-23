@@ -39,7 +39,7 @@ class OSCapaSchema(pa.DataFrameModel):
         unique_column_names (bool): Disable check for unique column names.
     """
 
-    cod_empresa: int = pa.Field(ge=2, le=4)
+    cod_empresa: int = pa.Field(ge=0)
     numero_os: int = pa.Field(ge=0)
     os_original: str
     data_emissao: datetime = pa.Field(ge="2024-10-21")
