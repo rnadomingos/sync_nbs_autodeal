@@ -1,6 +1,5 @@
 from sqlalchemy import Column, Integer, String, DateTime, Text, JSON, UniqueConstraint
 from sqlalchemy.orm import declarative_base
-from include.infra.postgres_database import engine
 from datetime import datetime
 import pytz
 
@@ -17,6 +16,8 @@ class AutonoxOutboxModel(Base):
         payload (JSON): Objeto JSON completo da OS gerado para ingestão.
         attempts (int): Contador de tentativas de envio.
         last_error (str): Mensagem de erro do último envio (se houver).
+        response_status_code (int): Código HTTP retornado pela última requisição.
+        response_message (str): Mensagem devolvida pela API ou erro da requisição.
         processo_id (str): ID do processo de garantia retornado pela API Autonox.
         created_at (datetime): Data/hora de criação na fila outbox.
         updated_at (datetime): Data/hora de última atualização.
@@ -34,6 +35,8 @@ class AutonoxOutboxModel(Base):
     payload = Column(JSON, nullable=True)
     attempts = Column(Integer, nullable=False, default=0)
     last_error = Column(Text, nullable=True)
+    response_status_code = Column(Integer, nullable=True)
+    response_message = Column(Text, nullable=True)
     processo_id = Column(String(100), nullable=True)
     
     created_at = Column(DateTime(timezone=True), default=now_utc_minus_3)
@@ -43,5 +46,3 @@ class AutonoxOutboxModel(Base):
     __table_args__ = (
         UniqueConstraint("cod_empresa", "numero_os", name="uq_autonox_outbox_empresa_os"),
     )
-
-Base.metadata.create_all(engine)

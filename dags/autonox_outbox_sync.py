@@ -16,7 +16,7 @@ default_args = {
     catchup=False,
     default_args=default_args,
 )
-def pipeline_autonox_outbox_sync():
+def pipeline_02_autonox_outbox_sync():
 
     @task(task_id="enqueue_autonox_outbox")
     def task_enqueue_autonox_outbox():
@@ -33,4 +33,4 @@ def pipeline_autonox_outbox_sync():
     t1 >> t2
 
 
-pipeline_autonox_outbox_sync()
+pipeline_02_autonox_outbox_sync()

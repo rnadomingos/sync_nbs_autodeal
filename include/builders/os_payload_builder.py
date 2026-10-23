@@ -9,6 +9,7 @@ from include.data.schemas.autonox_payload_schema import (
     ReclamacaoItem,
     ServicoItem,
     PecaItem,
+    NotaFiscalItem,
 )
 
 logger = logging.getLogger(__name__)
@@ -39,7 +40,9 @@ class OSPayloadBuilder:
                 SELECT 
                     oc.cod_empresa,
                     oc.numero_os,
+                    lower(oc.status_os) as situacao,
                     oc.data_emissao,
+                    coalesce(oc.data_encerramento, oc.data_cancelamento) as data_fechamento,
                     oc.chassi,
                     oc.placa,
                     oc.tipo_os,
@@ -204,14 +207,51 @@ class OSPayloadBuilder:
             tot_geral = (
                 float(capa["valor_total"]) if capa["valor_total"] is not None else None
             )
-
+            # Notas fiscais
+            query_notas = text(
+                """
+                SELECT 
+                    nr_nota_fiscal as numero,
+                    case 
+                        when tipo_nota_fiscal = '1' then 'servico'
+                        when tipo_nota_fiscal = '2' then 'peca'
+                        else '0'
+                    end as tipo,
+                    data_referencia as data,
+                    valor
+                FROM notas_fiscais_ordem_servico
+                WHERE cod_empresa = :cod_empresa AND numero_os = :numero_os
+            """
+            )
+            notas_rows = (
+                conn.execute(
+                    query_notas, {"cod_empresa": cod_empresa, "numero_os": numero_os}
+                )
+                .mappings()
+                .all()
+            )
+            notas_fiscais = [
+                NotaFiscalItem(
+                    numero=str(r["numero"]) if r["numero"] is not None else None,
+                    tipo=str(r["tipo"]) if r["tipo"] is not None else None,
+                    data=str(r["data"].strftime("%Y-%m-%d")) if r["data"] is not None else None,
+                    valor=float(r["valor"]) if r["valor"] is not None else None,
+                )
+                for r in notas_rows
+            ]
             # Montagem do objeto Pydantic
             payload_obj = AutonoxOSPayload(
                 marca=marca or self.marca_default,
                 numero_os=str(capa["numero_os"]),
+                situacao=capa["situacao"],
                 data_os=(
                     capa["data_emissao"].strftime("%Y-%m-%d")
                     if capa["data_emissao"]
+                    else None
+                ),
+                data_fechamento=(
+                    capa["data_fechamento"].strftime("%Y-%m-%d")
+                    if capa["data_fechamento"]
                     else None
                 ),
                 chassi=capa["chassi"],
@@ -247,6 +287,7 @@ class OSPayloadBuilder:
                     round(tot_servicos, 2) if tot_servicos is not None else None
                 ),
                 valor_total=round(tot_geral, 2) if tot_geral is not None else None,
+                notas_fiscais=notas_fiscais,
             )
 
             # Dump para dicionário (excluindo None nulos irrelevantes se desejado, mas mantendo estrutura limpa)
