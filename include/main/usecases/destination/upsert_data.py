@@ -108,10 +108,15 @@ class UpsertData:
                             else_=self.data_model.__table__.c["updated_at"]
                         )
 
-                    stmt = stmt.on_conflict_do_update(
-                        index_elements=self.conflict_keys,
-                        set_=update_dict
-                    )
+                    if update_dict:
+                        stmt = stmt.on_conflict_do_update(
+                            index_elements=self.conflict_keys,
+                            set_=update_dict
+                        )
+                    else:
+                        stmt = stmt.on_conflict_do_nothing(
+                            index_elements=self.conflict_keys
+                        )
 
                     db.execute(stmt)
                 db.commit()
