@@ -63,7 +63,7 @@ flowchart TB
 
 Cada etapa consulta o **Oracle** (SQL parametrizado), valida o **DataFrame** com o schema Pandera correspondente e grava no **Postgres** com `ON CONFLICT DO UPDATE`.
 
-Para cargas incrementais, o destino pode usar a **maior data** já presente em colunas de controle; se a tabela estiver vazia, usa-se a variável `INTEGRATION_START_DATE` do ambiente (veja abaixo).
+Para cargas incrementais, o destino usa a **maior data** já presente em colunas de controle. Se ainda não houver data no destino, usa `autonox_sync_config.data_inicial_integracao`. A seed cria essa configuração global, incluindo `enqueue_limit` (500), `batch_size` (50) e `max_attempts` (5); valores já ajustados na tabela são preservados nas execuções seguintes. A seed roda antes das consultas NBS no pipeline e na DAG de extração. Em bancos existentes, a data inicial é migrada da menor data das empresas ativas em `autonox_empresa_config`.
 
 ## Requisitos
 
@@ -103,7 +103,7 @@ No **Linux** (incluindo a imagem Docker deste repositório), o `Dockerfile` inst
 
 | Variável | Uso |
 |----------|-----|
-| `INTEGRATION_START_DATE` | Data inicial (`YYYY-MM-DD`) quando não há dado no Postgres para calcular máxima data em algumas rotinas. |
+| `INTEGRATION_START_DATE` | Data inicial padrão (`YYYY-MM-DD`) gravada em `autonox_sync_config.data_inicial_integracao` quando a seed cria a configuração global pela primeira vez e não há data antiga para migrar. |
 | `ORACLE_*` | `USERNAME`, `PASSWORD`, `HOST`, `PORT`, `SERVICE`, e `DRIVER` (pasta do Instant Client). |
 | `POSTGRES_*` | `USERNAME`, `PASSWORD`, `HOST`, `PORT`, `SERVICE` (nome do banco). |
 | `AIRFLOW__CORE__ALLOWED_DESERIALIZATION_CLASSES` | Necessário no ambiente Airflow se tasks retornam/serializam tipos dos pacotes de schema (valor de exemplo no `.env_sample`). |
@@ -148,4 +148,3 @@ Abra a UI do Airflow, habilite o DAG se necessário e acompanhe as tasks. A imag
 - `.astro/` — Metadados do projeto Astro CLI (ex.: `config.yaml`) e utilitários de teste/integridade opcionais.
 - `Dockerfile` — Imagem de execução com Oracle client para deploy/desenvolvimento Astro.
 - `requirements.txt` — Dependências pip usadas na imagem Docker (alinhadas ao projeto).
-

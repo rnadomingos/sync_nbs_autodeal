@@ -72,7 +72,7 @@ flowchart TD
 - **Integration Entities**:
   - `AutonoxOSPayload` (Modelo Pydantic que espelha o contrato JSON do Autonox).
   - `AutonoxOutboxRecord` (Modelo SQLAlchemy da tabela de controle `autonox_outbox`).
-  - `AutonoxEmpresaConfigModel` (Modelo SQLAlchemy da tabela `autonox_empresa_config` para chaves API e parâmetros por loja).
+  - `AutonoxEmpresaConfigModel` (Modelo SQLAlchemy da tabela `autonox_empresa_config` para chaves API, parâmetros por loja e `data_inicial_integracao`).
 
 #### **A — Approach (Estratégia Arquitetural)**
 - Adotar a **arquitetura em 2 DAGs totalmente desacopladas**:
@@ -91,7 +91,7 @@ include/
 │   ├── autonox_outbox_model.py # Modelo SQLAlchemy da tabela autonox_outbox
 │   └── autonox_empresa_config_model.py # Modelo SQLAlchemy de chaves/lojas
 ├── seeds/
-│   └── empresa_config_seed.py # Seed inicial de lojas e chaves API
+│   └── seed_config.py # Seed de configuração global e de lojas/chaves API
 ├── schemas/
 │   └── autonox_payload_schema.py # Modelos Pydantic para validação do JSON da API
 ├── builders/
@@ -107,9 +107,10 @@ include/
 2. **Task O2**: Definir `AutonoxOSPayload` Pydantic schema alinhado ao contrato oficial do Autonox.
 3. **Task O3**: Implementar `OSPayloadBuilder` em `include/builders/os_payload_builder.py`.
 4. **Task O4**: Criar `AutonoxHttpClient` com suporte a autenticação por empresa/loja, timeouts e tratamento de erros.
-5. **Task O5**: Criar modelo e seed `autonox_empresa_config` (`codigo_empresa`, `sigla`, `marca`, `api_key`, `is_active`).
+5. **Task O5**: Criar modelo e seed `autonox_empresa_config` (`codigo_empresa`, `sigla`, `marca`, `api_key`, `is_active`) e a configuração global `autonox_sync_config` (`enqueue_limit`, `batch_size`, `max_attempts`, `data_inicial_integracao`), preservando valores operacionais já configurados.
 6. **Task O6**: Implementar `SyncService.process_outbox()` para ler pendências, resolver a chave API por empresa, enviar à API e atualizar o status.
 7. **Task O7**: Criar o DAG dedicado `pipeline_autonox_outbox_sync` (`dags/autonox_outbox_sync.py`) e manter o DAG de extração (`dags/nbs_to_postgres.py`) focado exclusivamente no NBS.
+8. **Task O8**: Executar a seed de configuração antes da primeira extração e usar a menor `data_inicial_integracao` entre empresas ativas como data de partida quando a coluna de destino ainda não tiver registros com data.
 
 #### **N — Norms (Normas de Engenharia)**
 - **Validação Dupla**: Pandera na entrada da Staging (Pandas/Oracle); Pydantic na saída para a API (JSON/HTTP).
@@ -120,6 +121,8 @@ include/
 - **Limites de Tentativas**: Máximo de 5 retentativas por OS antes de marcar status como `failed_dead_letter`.
 - **Isolamento de Erros**: Falha no envio de uma OS individual não paralisa o processamento das demais OS na fila.
 - **Idempotência**: Requisições para o Autonox utilizam a chave composta (`cod_empresa` + `numero_os`) garantindo atualizações limpas em caso de reenvio.
+- **Data Inicial**: `data_inicial_integracao` é global e fica em `autonox_sync_config`; `INTEGRATION_START_DATE` é usado na primeira seed quando não há valor antigo para migrar. Em bancos existentes, a seed migra a menor data inicial ativa de `autonox_empresa_config` e remove a coluna antiga.
+- **Inicialização**: O pipeline direto e a DAG de extração executam a seed antes de iniciar as consultas NBS, criando a tabela e sua coluna de data inicial quando necessário.
 
 
 ---
