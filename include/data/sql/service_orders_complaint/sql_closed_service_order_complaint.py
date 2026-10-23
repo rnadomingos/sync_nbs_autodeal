@@ -1,7 +1,4 @@
-from sqlalchemy import text
-
-stmt_closed_service_order_complaint = text(
-    """
+stmt_closed_service_order_complaint = """
                         SELECT
                             -- ORDEM DE SERVIÇO
                             os.cod_empresa,
@@ -20,11 +17,10 @@ stmt_closed_service_order_complaint = text(
                             AND os_original.cod_empresa = os.cod_empresa
                         WHERE to_char(os.data_encerrada,'YYYY-MM-DD') >= :max_date
                             AND NVL(ostp.garantia, 'N') = 'S'
-                            AND os.cod_empresa IN (2, 3, 4)
+                            AND os.cod_empresa IN ({empresa_ids})
                             AND NVL(UPPER(os.orcamento), 'N') = 'N'
                             AND os.numero_os > 0
                         ORDER BY
                             os.cod_empresa,
                             os.numero_os,
                             os_original.item ASC"""
-)

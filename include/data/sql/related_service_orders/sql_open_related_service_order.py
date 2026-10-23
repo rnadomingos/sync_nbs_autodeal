@@ -1,6 +1,4 @@
-from sqlalchemy import text
-
-stmt_open_related_service_orders = text("""SELECT 
+stmt_open_related_service_orders = """SELECT 
     os.cod_empresa,
     os.numero_os,
     os_relacoes.numero_os_irma
@@ -10,5 +8,5 @@ FROM os
 WHERE to_char(os.data_emissao,'YYYY-MM-dd') >= :max_date 
     AND os.status_os = '0'
     AND NVL(ostp.garantia, 'N') = 'S'
-    AND os.cod_empresa IN (2, 3, 4)
-    AND NVL(UPPER(os.orcamento), 'N') = 'N'""")
+    AND os.cod_empresa IN ({empresa_ids})
+    AND NVL(UPPER(os.orcamento), 'N') = 'N'"""

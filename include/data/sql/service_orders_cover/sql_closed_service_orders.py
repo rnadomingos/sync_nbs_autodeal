@@ -1,11 +1,4 @@
-from sqlalchemy import text
-
-stmt_closed_service_orders = text(
-    """
-
-
-
-WITH cte_frota_data_compra AS (
+stmt_closed_service_orders = """WITH cte_frota_data_compra AS (
     SELECT 
         cod_produto,
         cod_modelo,
@@ -70,6 +63,5 @@ WITH cte_frota_data_compra AS (
                           AND fdc.cod_cliente = os.cod_cliente)
   WHERE to_char(os.data_encerrada ,'YYYY-MM-dd') >= :max_date
         AND NVL(ostp.garantia, 'N') = 'S'
-        AND os.cod_empresa IN ('2', '3', '4')
+        AND os.cod_empresa IN ({empresa_ids})
         AND NVL(UPPER(os.orcamento), 'N') = 'N'"""
-)

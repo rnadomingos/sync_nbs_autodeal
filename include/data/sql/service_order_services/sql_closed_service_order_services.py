@@ -1,7 +1,4 @@
-from sqlalchemy import text
-
-stmt_closed_service_order_services = text(
-    """
+stmt_closed_service_order_services = """
                 -- SCRIPT PARA ATUALIZAR OS SERVIÇOS DAS OSs NO FECHAMENTO NA TABELA OS_SERVICOS
                 SELECT
                     -- ORDEM DE SERVIÇO
@@ -19,10 +16,9 @@ stmt_closed_service_order_services = text(
                     INNER JOIN servicos serv ON (serv.cod_servico = os_servicos.cod_servico)
                 WHERE TO_CHAR(os.data_encerrada, 'YYYY-MM-DD') >= :max_date
                     AND NVL(ostp.garantia, 'N') = 'S'
-                    AND os.cod_empresa IN (2, 3, 4)
+                    AND os.cod_empresa IN ({empresa_ids})
                     AND NVL(UPPER(os.orcamento), 'N') = 'N'
                 ORDER BY
                     os.cod_empresa,
                     os.numero_os,
                     os_servicos.item"""
-)

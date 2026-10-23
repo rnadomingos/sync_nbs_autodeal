@@ -1,6 +1,4 @@
-from sqlalchemy import text
-
-stmt_closed_customers_service_order = text("""SELECT 
+stmt_closed_customers_service_order = """SELECT 
       --ORDEM DE SERVICO
       os.cod_empresa,
       os.numero_os,
@@ -19,6 +17,6 @@ FROM    os
 where to_char(os.data_encerrada,'YYYY-MM-dd') >= :max_date --'2025-07-01'
 --and os.status_os='1'
 AND nvl(ostp.garantia,'N')='S'
-AND os.cod_empresa IN (2,3,4)
+AND os.cod_empresa IN ({empresa_ids})
 and nvl(upper(os.orcamento),'N')='N'
-AND OS.NUMERO_OS > 0""")
+AND OS.NUMERO_OS > 0"""

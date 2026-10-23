@@ -1,7 +1,4 @@
-from sqlalchemy import text
-
-stmt_open_items_service_orders = text(
-    """
+stmt_open_items_service_orders = """
 SELECT 
     -- ORDER DE SERVIÇO
     os.cod_empresa,
@@ -31,8 +28,7 @@ FROM os
 WHERE TO_CHAR(os.data_emissao, 'YYYY-MM-DD') >= :max_date
   AND os.status_os = '0'
   AND NVL(ostp.garantia, 'N') = 'S'
-  AND os.cod_empresa IN (2, 3, 4)
+  AND os.cod_empresa IN ({empresa_ids})
   AND NVL(UPPER(os.orcamento), 'N') = 'N'
   AND os.numero_os > 0
 """
-)

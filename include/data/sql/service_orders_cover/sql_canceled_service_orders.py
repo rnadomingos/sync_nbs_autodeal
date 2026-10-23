@@ -1,7 +1,4 @@
-from sqlalchemy import text
-
-stmt_canceled_service_orders = text(
-    """WITH cte_frota_data_compra AS (
+stmt_canceled_service_orders = """WITH cte_frota_data_compra AS (
     SELECT 
         cod_produto,
         cod_modelo,
@@ -67,7 +64,6 @@ stmt_canceled_service_orders = text(
                         WHERE TO_CHAR(os.data_cancelamento,'YYYY-MM-dd') >= :max_date
                           AND os.status_os = '2'
                           AND NVL(ostp.garantia, 'N') = 'S'
-                          AND os.cod_empresa IN (2, 3, 4)
+                          AND os.cod_empresa IN ({empresa_ids})
                           AND NVL(UPPER(os.orcamento), 'N') = 'N'
                           AND os.numero_os > '0'"""
-)

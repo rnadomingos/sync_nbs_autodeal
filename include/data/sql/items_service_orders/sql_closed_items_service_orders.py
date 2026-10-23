@@ -1,7 +1,4 @@
-from sqlalchemy import text
-
-stmt_closed_items_service_orders = text(
-    """SELECT
+stmt_closed_items_service_orders = """SELECT
     -- ORDER DE SERVIÇO
     os.cod_empresa,
     os.numero_os,
@@ -23,11 +20,10 @@ FROM os
     INNER JOIN os_tipos_empresas ON (os_tipos_empresas.cod_empresa = os.cod_empresa AND os_tipos_empresas.tipo = os.tipo)
 WHERE   TO_CHAR(os.data_encerrada, 'YYYY-MM-DD') >= :max_date
 AND NVL(ostp.garantia, 'N') = 'S'
-AND os.cod_empresa IN ('2', '3', '4')
+AND os.cod_empresa IN ({empresa_ids})
 AND NVL(UPPER(os.orcamento), 'N') = 'N'
 ORDER BY
     os.cod_empresa,
     os.numero_os,
     os_requisicoes.cod_item
 """
-)

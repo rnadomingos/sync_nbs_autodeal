@@ -1,6 +1,4 @@
-from sqlalchemy import text
-
-stmt_closed_service_order_invoices = text("""
+stmt_closed_service_order_invoices = """
             SELECT 
                   os.cod_empresa,
                   os.numero_os,
@@ -17,7 +15,7 @@ stmt_closed_service_order_invoices = text("""
             WHERE to_char(os.data_encerrada,'YYYY-MM-dd') >=  :max_date 
               AND nvl(upper(ostp.garantia),'N')='S'
               AND vendas.status!='1'
-              AND os.cod_empresa IN (2,3,4)
+              AND os.cod_empresa IN ({empresa_ids})
               AND operacoes.Cod_Operacao='3'
             ORDER BY os.cod_empresa,os.numero_os
-            """)
+            """
