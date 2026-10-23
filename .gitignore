@@ -13,6 +13,9 @@ __pycache__/
 # Astro CLI
 .astro/
 
+# VS Code
+.vscode/
+
 # Docs Autonox
 docs/api_autonox/
 
