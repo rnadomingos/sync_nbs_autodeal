@@ -17,7 +17,7 @@ from include.extract_stages.service_orders_cover import build_service_orders_cov
     catchup=False
     )
 
-def pipeline_nbs_to_postgres():
+def pipeline_01_nbs_to_postgres():
     
     @task(task_id='customer_service_order')
     def task_build_customer_service_orders():
@@ -58,5 +58,5 @@ def pipeline_nbs_to_postgres():
 
     t1 >> t2 >> t3 >> t4 >> t5 >> t6 >> t7
 
-pipeline_nbs_to_postgres()
-
+pipeline_01_nbs_to_postgres()
+
