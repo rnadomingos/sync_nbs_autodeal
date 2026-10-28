@@ -19,4 +19,11 @@ ENV LD_LIBRARY_PATH=/opt/oracle/instantclient_23_9
 
 USER astro
 
+COPY requirements.txt .
 RUN pip install -r requirements.txt
+
+WORKDIR /usr/local/airflow
+
+COPY dags/ dags/
+COPY include/ include/
+COPY plugins/ plugins/
