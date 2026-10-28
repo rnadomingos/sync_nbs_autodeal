@@ -1,9 +1,9 @@
-# NBS Extract Autodeal
+# Sync NBS Autodeal
 
 
-Projeto de **integração de dados** entre o **Dealer Management System** (DMS - Sistema de Gestão de Concessionárias) da **NBS** (Banco de dados Oracle) e um banco **PostgreSQL** intermediário. 
+Projeto de **integração de dados** entre o **Dealer Management System** (DMS - Sistema de Gestão de Concessionárias) da **NBS** (Oracle) e a **API de ingestão do Autonox**. O PostgreSQL é usado como staging e como controle persistente da fila de sincronização.
 
-Esse Postgres serve de camada para consumo por outras aplicações — por exemplo, fluxos que levam informações ao ecossistema **Autodeal** / **BMW** (gestão de garantias e ordens de serviço).
+As ordens de serviço e seus dados relacionados são extraídos para o PostgreSQL, consolidados em payloads por OS e enviados ao Autonox. Os componentes e regras do fluxo estão detalhados no [blueprint da integração](./docs/spdd/spdd_autonox_blueprint.md).
 
 
 ![NBS Extract Autodeal - Tech Flow](./nbs_extract_postgres.png)
@@ -14,6 +14,7 @@ Esse Postgres serve de camada para consumo por outras aplicações — por exemp
 - Extrair dados operacionais do NBS (ordens de serviço e entidades relacionadas).
 - **Validar** os resultados com **Pandera** antes do carregamento.
 - Persistir no Postgres com **UPSERT** (insert ou atualização em conflito de chave), via **SQLAlchemy**.
+- Consolidar os dados de cada OS em um payload validado e enviá-lo à API do Autonox usando uma fila *outbox* persistida no PostgreSQL.
 - Permitir execução **manual** (script Python) ou **agendada** com **Apache Airflow** (projeto no padrão **Astronomer Astro**).
 
 ## O que o pipeline faz
@@ -30,9 +31,11 @@ O fluxo segue uma ordem fixa: primeiro as tabelas “satélites” (detalhes em 
 | 6 | Faturas das ordens de serviço |
 | 7 | **Capa** das ordens de serviço (incluindo canceladas, conforme SQL da etapa) |
 
+Após a extração, o serviço de sincronização identifica OS novas ou atualizadas, registra-as em `autonox_outbox` e processa a fila em lotes. Cada payload combina a capa da OS com cliente, OS relacionadas, reclamações, serviços, peças e notas fiscais. O identificador da empresa e o número da OS são únicos na outbox; falhas de envio são registradas para nova tentativa sem repetir a extração do Oracle.
+
 ### Diagramas (Mermaid)
 
-**Sequência das etapas** — mesma ordem em `include.extract_stages.run` e no DAG `pipeline_nbs_to_postgres` (tasks encadeadas):
+**Sequência das etapas** — mesma ordem em `include.extract_stages.run` e no DAG `pipeline_01_nbs_to_postgres`, definido em `dags/nbs_to_postgres.py` (tasks encadeadas):
 
 ```mermaid
 flowchart LR
@@ -63,12 +66,12 @@ flowchart TB
 
 Cada etapa consulta o **Oracle** (SQL parametrizado), valida o **DataFrame** com o schema Pandera correspondente e grava no **Postgres** com `ON CONFLICT DO UPDATE`.
 
-Para cargas incrementais, o destino usa a **maior data** já presente em colunas de controle. Se ainda não houver data no destino, usa `autonox_sync_config.data_inicial_integracao`. A seed cria essa configuração global, incluindo `enqueue_limit` (500), `batch_size` (50) e `max_attempts` (5); valores já ajustados na tabela são preservados nas execuções seguintes. A seed roda antes das consultas NBS no pipeline e na DAG de extração. Em bancos existentes, a data inicial é migrada da menor data das empresas ativas em `autonox_empresa_config`.
+Para cargas incrementais, a extração usa a maior data já presente nas colunas de controle. Se ainda não houver data no destino, usa `autonox_sync_config.data_inicial_integracao`. A configuração global inclui `enqueue_limit` (500), `batch_size` (50) e `max_attempts` (5); os valores existentes são preservados nas execuções seguintes. A DAG `pipeline_00_seed_config` permite inicializar a configuração manualmente. A execução direta do pipeline também chama a seed antes da extração, e o serviço de sincronização garante a configuração ao iniciar. Em bancos existentes, a seed migra a menor data inicial das empresas ativas para a configuração global.
 
 ## Requisitos
 
 - **Python** `>= 3.12, < 3.15` (definido no `pyproject.toml`).
-- **Poetry** para dependências de desenvolvimento local.
+- **uv** para gerenciamento de dependências e execução local ([instalação](https://docs.astral.sh/uv/getting-started/installation/)).
 - **Oracle Instant Client** (modo *thick* do `oracledb`): o caminho da pasta do client deve estar em `ORACLE_DRIVER` no `.env` (instruções na secção seguinte, *Oracle Instant Client (execução local)*).
 - **PostgreSQL** acessível com usuário, senha, host, porta e nome do banco.
 - Para o **Airflow local** no modelo Astro: **Docker** e [**Astro CLI**](https://www.astronomer.io/docs/astro/cli/overview) (`astro dev`).
@@ -119,16 +122,20 @@ Conexões locais do Airflow (somente desenvolvimento) podem ser declaradas em `a
 Na raiz do projeto, com o `.env` configurado e o Instant Client disponível:
 
 ```bash
-poetry install
-poetry run python -m include.pipeline
-# equivalente: poetry run task run
+uv sync
+uv run python -m include.pipeline
+# equivalente: uv run task run
 ```
 
-Isso executa todas as etapas em sequência (`include.extract_stages.run`), usando os *builders* por etapa (`build_*`) no mesmo encadeamento do DAG.
+Isso executa a seed de configuração, as sete etapas de extração e, em seguida, a inclusão e o processamento de OS na outbox para envio à API Autonox.
 
 ### Com Airflow (Astro)
 
-O DAG `pipeline_nbs_to_postgres` está em `dags/nbs_to_postgres.py`: uma task por etapa, encadeadas na mesma ordem do script acima. O agendamento padrão no código é **`0 * * * 1-6`** (a **cada hora** no minuto 0, **de segunda a sábado**), sem *catchup*. Ajuste o `schedule` no DAG se precisar de outra janela.
+O projeto disponibiliza três DAGs:
+
+- **`pipeline_00_seed_config`** ([`dags/seed_config.py`](./dags/seed_config.py)): execução manual (`schedule=None`) para inicializar as configurações.
+- **`pipeline_01_nbs_to_postgres`** ([`dags/nbs_to_postgres.py`](./dags/nbs_to_postgres.py)): extrai as sete etapas do Oracle para o PostgreSQL, em sequência. Executa a cada hora, no minuto 0, de segunda a sábado (`0 * * * 1-6`), sem *catchup*.
+- **`pipeline_02_autonox_outbox_sync`** ([`dags/autonox_outbox_sync.py`](./dags/autonox_outbox_sync.py)): identifica OS novas ou alteradas, enfileira-as e processa a outbox em sequência. Executa a cada 15 minutos (`*/15 * * * *`), sem *catchup*. As tasks têm uma tentativa de retry após dois minutos.
 
 Com Astro CLI instalado:
 
@@ -136,7 +143,7 @@ Com Astro CLI instalado:
 astro dev start
 ```
 
-Abra a UI do Airflow, habilite o DAG se necessário e acompanhe as tasks. A imagem customizada está no `Dockerfile` (runtime Astro + Instant Client Oracle).
+Na primeira configuração, execute manualmente `pipeline_00_seed_config` pela UI do Airflow antes da DAG de extração. Em seguida, habilite as DAGs de extração e sincronização. A DAG de sincronização faz a seed ao iniciar o serviço, e pode processar OS já disponíveis no staging mesmo se a extração não tiver acabado de rodar. Acompanhe as execuções e eventuais falhas pela UI do Airflow. A imagem customizada está no `Dockerfile` (runtime Astro + Instant Client Oracle).
 
 ### Deploy em servidor com Astro e Docker Compose
 
@@ -152,14 +159,7 @@ docker compose ps
 astro dev start
 ```
 
-O PostgreSQL é criado vazio na primeira inicialização. Para migrar os dados do Render, faça e valide um backup antes de alterar o deploy; com o pipeline pausado e o banco local iniciado, um dump SQL pode ser importado assim:
-
-```bash
-pg_dump --no-owner --no-acl "$RENDER_DATABASE_URL" > stage.sql
-docker compose exec -T postgres-stage sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB"' < stage.sql
-```
-
-Guarde o dump de forma segura e remova-o após validar a importação. Os dados do stage são mantidos no volume Docker `stage_postgres_data`; `docker compose down` preserva esse volume, enquanto `docker compose down -v` o apaga.
+O PostgreSQL é criado vazio na primeira inicialização. Os dados do stage são mantidos no volume Docker `stage_postgres_data`; `docker compose down` preserva esse volume, enquanto `docker compose down -v` o apaga.
 
 
 ![Airflow Dag Excecution - Tech Flow](./pipeline_airflow.png)
@@ -167,7 +167,7 @@ Guarde o dump de forma segura e remova-o após validar a importação. Os dados 
 ## Estrutura útil do repositório
 
 - `include/` — Lógica da pipeline: `extract_stages`, controllers, SQL, modelos SQLAlchemy, schemas Pandera, infra Oracle/Postgres.
-- `dags/` — Definição do DAG Airflow.
+- `dags/` — DAGs Airflow para inicialização da configuração, extração NBS e sincronização da outbox com a API Autonox.
 - `.astro/` — Metadados do projeto Astro CLI (ex.: `config.yaml`) e utilitários de teste/integridade opcionais.
 - `Dockerfile` — Imagem de execução com Oracle client para deploy/desenvolvimento Astro.
 - `requirements.txt` — Dependências pip usadas na imagem Docker (alinhadas ao projeto).
