@@ -138,6 +138,29 @@ astro dev start
 
 Abra a UI do Airflow, habilite o DAG se necessário e acompanhe as tasks. A imagem customizada está no `Dockerfile` (runtime Astro + Instant Client Oracle).
 
+### Deploy em servidor com Astro e Docker Compose
+
+O Airflow continua sendo iniciado e gerenciado pelo Astro CLI com `astro dev start`. O `docker-compose.yml` deste repositório sobe **somente** o PostgreSQL da aplicação (`postgres-stage`); ele não inicia outro Airflow nem outro banco de metadados do Airflow. O Postgres de metadados usado pelo ambiente Astro permanece separado.
+
+Na raiz do projeto no servidor, copie `.env_sample` para `.env` e configure as credenciais Oracle e PostgreSQL. Ajuste `POSTGRES_BIND_ADDRESS` para o IP privado do servidor acessível pelos containers do Astro e `POSTGRES_HOST` para o mesmo endereço. Por exemplo, se o IP privado do servidor for `192.168.1.10`, use esse endereço nos dois campos. O container do banco escuta internamente na porta `5432`; `POSTGRES_PUBLISHED_PORT`/`POSTGRES_PORT` definem a porta do host, por padrão `5433`, evitando conflito com o PostgreSQL de metadados do Astro. Restrinja a porta publicada no firewall para que apenas o servidor/Airflow possa acessá-la; não exponha o banco à internet.
+
+Suba o banco stage e, em seguida, o Airflow pelo Astro:
+
+```bash
+docker compose up -d
+docker compose ps
+astro dev start
+```
+
+O PostgreSQL é criado vazio na primeira inicialização. Para migrar os dados do Render, faça e valide um backup antes de alterar o deploy; com o pipeline pausado e o banco local iniciado, um dump SQL pode ser importado assim:
+
+```bash
+pg_dump --no-owner --no-acl "$RENDER_DATABASE_URL" > stage.sql
+docker compose exec -T postgres-stage sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB"' < stage.sql
+```
+
+Guarde o dump de forma segura e remova-o após validar a importação. Os dados do stage são mantidos no volume Docker `stage_postgres_data`; `docker compose down` preserva esse volume, enquanto `docker compose down -v` o apaga.
+
 
 ![Airflow Dag Excecution - Tech Flow](./pipeline_airflow.png)
 
