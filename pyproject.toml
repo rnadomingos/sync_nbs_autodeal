@@ -1,5 +1,5 @@
 [project]
-name = "nbs-extract-autodeal"
+name = "sync-nbs-autodeal"
 version = "0.1.0"
 description = ""
 authors = [{ name = "Renan Domingos", email = "rna.domingos@hotmail.com" }]
