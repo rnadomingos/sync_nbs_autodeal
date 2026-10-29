@@ -1,12 +1,13 @@
 from datetime import date
 
-from sqlalchemy import CheckConstraint, Column, Date, Integer
+from sqlalchemy import CheckConstraint, Column, Date, Integer, String
 from sqlalchemy.orm import declarative_base
 
 DEFAULT_ENQUEUE_LIMIT = 500
 DEFAULT_BATCH_SIZE = 50
 DEFAULT_MAX_ATTEMPTS = 5
 DEFAULT_INTEGRATION_START_DATE = date(2026, 10, 10)
+DEFAULT_AUTONOX_API_URL = "https://autonox.com.br/api/ingest/os"
 
 Base = declarative_base()
 
@@ -24,6 +25,9 @@ class AutonoxSyncConfigModel(Base):
     enqueue_limit = Column(Integer, nullable=False, default=DEFAULT_ENQUEUE_LIMIT)
     batch_size = Column(Integer, nullable=False, default=DEFAULT_BATCH_SIZE)
     max_attempts = Column(Integer, nullable=False, default=DEFAULT_MAX_ATTEMPTS)
+    api_url = Column(
+        String(2048), nullable=False, default=DEFAULT_AUTONOX_API_URL
+    )
     data_inicial_integracao = Column(
         Date, nullable=False, default=DEFAULT_INTEGRATION_START_DATE
     )

@@ -8,6 +8,7 @@ from include.data.models.autonox_sync_config_model import (
     AutonoxSyncConfigModel,
     DEFAULT_BATCH_SIZE,
     DEFAULT_ENQUEUE_LIMIT,
+    DEFAULT_AUTONOX_API_URL,
     DEFAULT_INTEGRATION_START_DATE,
     DEFAULT_MAX_ATTEMPTS,
 )
@@ -67,6 +68,7 @@ def seed_config(engine: Engine = default_engine) -> int:
     )
 
     global_api_key = os.getenv("AUTONOX_API_KEY", "")
+    api_url = os.getenv("AUTONOX_API_URL") or DEFAULT_AUTONOX_API_URL
     start_date_value = os.getenv("INTEGRATION_START_DATE")
     inserted_count = 0
 
@@ -77,6 +79,27 @@ def seed_config(engine: Engine = default_engine) -> int:
 
         AutonoxEmpresaConfigModel.__table__.create(bind=conn, checkfirst=True)
         AutonoxSyncConfigModel.__table__.create(bind=conn, checkfirst=True)
+        sync_columns = {
+            column["name"]
+            for column in inspect(conn).get_columns("autonox_sync_config")
+        }
+        if "api_url" not in sync_columns:
+            conn.execute(
+                text(
+                    "ALTER TABLE autonox_sync_config "
+                    "ADD COLUMN api_url VARCHAR(2048) NOT NULL DEFAULT ''"
+                )
+            )
+        conn.execute(
+            text(
+                """
+                UPDATE autonox_sync_config
+                SET api_url = :api_url
+                WHERE config_id = 1 AND (api_url IS NULL OR api_url = '')
+                """
+            ),
+            {"api_url": api_url},
+        )
         company_columns = {
             column["name"]
             for column in inspect(conn).get_columns("autonox_empresa_config")
@@ -102,11 +125,11 @@ def seed_config(engine: Engine = default_engine) -> int:
             text(
                 """
                 INSERT INTO autonox_sync_config (
-                    config_id, enqueue_limit, batch_size, max_attempts,
+                    config_id, enqueue_limit, batch_size, max_attempts, api_url,
                     data_inicial_integracao
                 )
                 VALUES (
-                    1, :enqueue_limit, :batch_size, :max_attempts,
+                    1, :enqueue_limit, :batch_size, :max_attempts, :api_url,
                     :data_inicial_integracao
                 )
                 ON CONFLICT (config_id) DO NOTHING
@@ -116,6 +139,7 @@ def seed_config(engine: Engine = default_engine) -> int:
                 "enqueue_limit": DEFAULT_ENQUEUE_LIMIT,
                 "batch_size": DEFAULT_BATCH_SIZE,
                 "max_attempts": DEFAULT_MAX_ATTEMPTS,
+                "api_url": api_url,
                 "data_inicial_integracao": initial_start_date,
             },
         )

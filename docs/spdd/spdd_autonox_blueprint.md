@@ -77,4 +77,4 @@ include/
 - A seed define `enqueue_limit`, `batch_size`, `max_attempts` e `data_inicial_integracao`; valores já configurados são preservados. Em configurações antigas, a data inicial global é migrada da menor data das empresas ativas.
 - A execução direta pelo módulo `include.pipeline` realiza a seed, a extração e a sincronização em sequência. O serviço de sincronização também garante a inicialização das tabelas e configurações ao ser criado.
 
-`INTEGRATION_START_DATE` fornece a data inicial quando a configuração global ainda não existe e não há uma data antiga para migrar. `autonox_sync_config` também mantém `enqueue_limit` (500), `batch_size` (50) e `max_attempts` (5) como valores padrão.
+`INTEGRATION_START_DATE` fornece a data inicial quando a configuração global ainda não existe e não há uma data antiga para migrar. `AUTONOX_API_URL` fornece a URL inicial da API Autonox; ambos os valores configurados são preservados nas execuções seguintes. `autonox_sync_config` também mantém `enqueue_limit` (500), `batch_size` (50) e `max_attempts` (5) como valores padrão.

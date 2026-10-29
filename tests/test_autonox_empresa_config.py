@@ -47,6 +47,7 @@ def test_autonox_empresa_config_model_creation(memory_db):
 
 def test_seed_config(memory_db, monkeypatch):
     monkeypatch.setenv("INTEGRATION_START_DATE", "2026-08-01")
+    monkeypatch.setenv("AUTONOX_API_URL", "https://example.com/autonox/os")
     inserted_count = seed_config(memory_db)
     assert inserted_count >= len(INITIAL_EMPRESA_SEEDS)
 
@@ -62,11 +63,13 @@ def test_seed_config(memory_db, monkeypatch):
     assert sync_config.enqueue_limit == 500
     assert sync_config.batch_size == 50
     assert sync_config.max_attempts == 5
+    assert sync_config.api_url == "https://example.com/autonox/os"
     assert sync_config.data_inicial_integracao.isoformat() == "2026-08-01"
 
 
 def test_seed_does_not_overwrite_existing_sync_config(memory_db, monkeypatch):
     monkeypatch.setenv("INTEGRATION_START_DATE", "2026-08-01")
+    monkeypatch.setenv("AUTONOX_API_URL", "https://example.com/first")
     seed_config(memory_db)
     with memory_db.begin() as connection:
         connection.execute(
@@ -80,6 +83,7 @@ def test_seed_does_not_overwrite_existing_sync_config(memory_db, monkeypatch):
         )
 
     monkeypatch.setenv("INTEGRATION_START_DATE", "2026-09-01")
+    monkeypatch.setenv("AUTONOX_API_URL", "https://example.com/second")
     seed_config(memory_db)
     service = SyncService(db_engine=memory_db)
     with sessionmaker(bind=memory_db)() as session:
@@ -87,6 +91,7 @@ def test_seed_does_not_overwrite_existing_sync_config(memory_db, monkeypatch):
         assert sync_config.enqueue_limit == 100
         assert sync_config.batch_size == 20
         assert sync_config.max_attempts == 3
+        assert sync_config.api_url == "https://example.com/first"
         assert sync_config.data_inicial_integracao.isoformat() == "2026-08-01"
     assert service.sync_config == {
         "enqueue_limit": 100,
@@ -148,6 +153,7 @@ def test_seed_migrates_legacy_start_date_to_sync_config(monkeypatch):
 def test_seed_creates_config_table_for_new_database(monkeypatch):
     engine = create_engine("sqlite:///:memory:")
     monkeypatch.setenv("INTEGRATION_START_DATE", "2026-10-01")
+    monkeypatch.setenv("AUTONOX_API_URL", "https://example.com/autonox/os")
 
     seed_config(engine)
 
@@ -155,12 +161,52 @@ def test_seed_creates_config_table_for_new_database(monkeypatch):
         row = connection.execute(
             text(
                 """
-                SELECT enqueue_limit, batch_size, max_attempts, data_inicial_integracao
+                SELECT enqueue_limit, batch_size, max_attempts, api_url,
+                       data_inicial_integracao
                 FROM autonox_sync_config WHERE config_id = 1
                 """
             )
         ).one()
-    assert row == (500, 50, 5, "2026-10-01")
+    assert row == (500, 50, 5, "https://example.com/autonox/os", "2026-10-01")
+
+
+def test_seed_adds_api_url_to_existing_sync_config(monkeypatch):
+    engine = create_engine("sqlite:///:memory:")
+    with engine.begin() as connection:
+        connection.execute(
+            text(
+                """
+                CREATE TABLE autonox_sync_config (
+                    config_id INTEGER PRIMARY KEY,
+                    enqueue_limit INTEGER NOT NULL,
+                    batch_size INTEGER NOT NULL,
+                    max_attempts INTEGER NOT NULL,
+                    data_inicial_integracao DATE NOT NULL
+                )
+                """
+            )
+        )
+        connection.execute(
+            text(
+                """
+                INSERT INTO autonox_sync_config
+                    (config_id, enqueue_limit, batch_size, max_attempts,
+                     data_inicial_integracao)
+                VALUES (1, 100, 20, 3, '2026-08-01')
+                """
+            )
+        )
+    monkeypatch.setenv("AUTONOX_API_URL", "https://example.com/migrated")
+
+    seed_config(engine)
+
+    with engine.connect() as connection:
+        row = connection.execute(
+            text(
+                "SELECT api_url FROM autonox_sync_config WHERE config_id = 1"
+            )
+        ).scalar_one()
+    assert row == "https://example.com/migrated"
 
 
 def test_autonox_client_empresa_api_key():

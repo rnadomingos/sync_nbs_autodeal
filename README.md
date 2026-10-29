@@ -107,6 +107,7 @@ No **Linux** (incluindo a imagem Docker deste repositório), o `Dockerfile` inst
 | Variável | Uso |
 |----------|-----|
 | `INTEGRATION_START_DATE` | Data inicial padrão (`YYYY-MM-DD`) gravada em `autonox_sync_config.data_inicial_integracao` quando a seed cria a configuração global pela primeira vez e não há data antiga para migrar. |
+| `AUTONOX_API_URL` | URL da API Autonox gravada em `autonox_sync_config.api_url` quando a seed cria a configuração global pela primeira vez ou migra uma configuração existente sem URL. |
 | `ORACLE_*` | `USERNAME`, `PASSWORD`, `HOST`, `PORT`, `SERVICE`, e `DRIVER` (pasta do Instant Client). |
 | `POSTGRES_*` | `USERNAME`, `PASSWORD`, `HOST`, `PORT`, `SERVICE` (nome do banco). |
 | `AIRFLOW__CORE__ALLOWED_DESERIALIZATION_CLASSES` | Necessário no ambiente Airflow se tasks retornam/serializam tipos dos pacotes de schema (valor de exemplo no `.env_sample`). |
